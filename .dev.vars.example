@@ -1,0 +1,10 @@
+# Copy this file to .dev.vars before running `wrangler dev`.
+# These values override public/config.json for the Worker API.
+
+PROJECT_REPO=taxin-404/Responsive-Web-Design
+PROJECT_SITE=https://responsive-web-design.taxin-404.workers.dev
+PROJECTS_ROOT=projects
+
+# Optional. Set this to avoid GitHub's anonymous rate limit.
+# In production, use `npx wrangler secret put GITHUB_TOKEN` instead.
+GITHUB_TOKEN=

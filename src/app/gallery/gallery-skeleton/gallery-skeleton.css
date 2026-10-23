@@ -1,0 +1,68 @@
+:host {
+  display: block;
+}
+
+:host,
+:host * {
+  box-sizing: border-box;
+}
+
+.card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.preview,
+.bar {
+  background: linear-gradient(
+    100deg,
+    var(--panel-2) 30%,
+    #242b35 50%,
+    var(--panel-2) 70%
+  );
+  background-size: 300% 100%;
+  animation: shimmer 1.3s ease-in-out infinite;
+}
+
+.preview {
+  aspect-ratio: 16 / 10;
+  border-bottom: 1px solid var(--line);
+}
+
+.card-body {
+  padding: 0.9rem 1rem 1rem;
+}
+
+.bar {
+  height: 0.8rem;
+  border-radius: 6px;
+  margin-bottom: 0.55rem;
+}
+
+.bar.short {
+  width: 45%;
+  margin-bottom: 0;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 150% 0;
+  }
+
+  100% {
+    background-position: -150% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview,
+  .bar {
+    animation: none;
+  }
+}

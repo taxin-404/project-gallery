@@ -1,0 +1,9 @@
+name = "project-gallery"
+main = "worker/index.ts"
+compatibility_date = "2026-10-01"
+
+[assets]
+directory = "./dist/project-gallery/browser"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true

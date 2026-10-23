@@ -1,0 +1,39 @@
+<a class="card" [href]="project().url">
+  <div class="preview">
+    <iframe
+      [src]="previewUrl()"
+      [title]="'Preview of ' + project().title"
+      loading="lazy"
+      tabindex="-1"
+      scrolling="no"
+    ></iframe>
+  </div>
+
+  <div class="card-body">
+    <div class="card-top">
+      <span
+        class="chip"
+        [class.HTML]="project().category === 'HTML'"
+        [class.CSS]="project().category === 'CSS'"
+      >
+        {{ project().category }}
+      </span>
+      <span class="num">#{{ project().order }}</span>
+      <svg
+        class="arrow"
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <path
+          d="M4.5 3a.75.75 0 0 0 0 1.5h5.69L3.22 11.47a.75.75 0 1 0 1.06 1.06L11.25 5.56v5.69a.75.75 0 0 0 1.5 0v-7.5a.75.75 0 0 0-.75-.75h-7.5Z"
+        />
+      </svg>
+    </div>
+
+    <h2 class="title">{{ project().title }}</h2>
+    <p class="folder">{{ project().folder }}</p>
+  </div>
+</a>

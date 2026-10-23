@@ -1,0 +1,25 @@
+<header class="site-header">
+  <div class="header-inner">
+    <img
+      class="logo"
+      src="/avatar.png"
+      alt="taxin-404 avatar"
+      width="30"
+      height="30"
+    />
+    <div class="identity">
+      <h1>Project Gallery</h1>
+      <p class="tagline">Responsive Web Design — HTML &amp; CSS work</p>
+    </div>
+    <div class="head-actions">
+      <span class="counter">
+        {{ count() }} {{ count() === 1 ? 'project' : 'projects' }}
+      </span>
+      @if (repoUrl(); as repoUrl) {
+        <a [href]="repoUrl" target="_blank" rel="noopener noreferrer"
+          >Source</a
+        >
+      }
+    </div>
+  </div>
+</header>
