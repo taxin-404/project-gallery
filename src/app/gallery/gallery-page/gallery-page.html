@@ -1,7 +1,4 @@
-<app-site-header
-  [count]="store.projects().length"
-  [repoUrl]="store.repoUrl()"
-/>
+<app-site-header [count]="store.projects().length" [repoUrls]="store.repoUrls()" />
 
 <main>
   <div class="toolbar">
@@ -23,13 +20,7 @@
     </div>
 
     <label class="search">
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 16 16"
-        fill="currentColor"
-        aria-hidden="true"
-      >
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         <path
           d="M11.5 7a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Zm-.82 4.74a6 6 0 1 1 1.06-1.06l3.04 3.04a.75.75 0 1 1-1.06 1.06l-3.04-3.04Z"
         />
@@ -60,23 +51,18 @@
         @if (query()) {
           Nothing matches “{{ query() }}”.
         } @else {
-          Add a folder with an <code>index.html</code> in the project repository
-          under HTML/ or CSS/ and push.
+          Add a folder with an <code>index.html</code> in any configured project repository, under a
+          category folder, and push.
         }
       </div>
     } @else {
       @for (project of visibleProjects(); track trackProject($index, project)) {
-        <app-project-card [project]="project" />
+        <app-project-card [project]="project" [showRepo]="store.repos().length > 1" />
       }
     }
   </div>
 
-  <p
-    class="status"
-    role="status"
-    aria-live="polite"
-    [attr.data-state]="statusState()"
-  >
+  <p class="status" role="status" aria-live="polite" [attr.data-state]="statusState()">
     {{ statusText() }}
   </p>
 </main>

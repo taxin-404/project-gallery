@@ -3,6 +3,7 @@ interface Env {
     fetch(request: Request): Promise<Response>;
   };
   PROJECT_REPO?: string;
+  PROJECT_REPOS?: string;
   PROJECT_SITE?: string;
   PROJECTS_ROOT?: string;
   PREVIEW_MODE?: string;
@@ -16,7 +17,7 @@ interface ExecutionContext {
 type PreviewMode = 'proxy' | 'external';
 
 interface GalleryConfig {
-  projectRepo: string;
+  projectRepos: string[];
   projectSite: string;
   projectsRoot: string;
   previewMode: PreviewMode;
@@ -31,11 +32,25 @@ interface GitHubTree {
 }
 
 interface DetectedProject {
+  repo: string;
   folder: string;
   title: string;
   category: string;
   order: number;
   url: string;
+}
+
+interface RepoDetection {
+  repo: string;
+  projects: DetectedProject[];
+  truncated: boolean;
+  error?: string;
+}
+
+interface ProjectDetection {
+  projects: DetectedProject[];
+  truncated: boolean;
+  warnings: Array<{ repo: string; error: string }>;
 }
 
 const CACHE_TTL_SECONDS = 300;
@@ -53,11 +68,12 @@ export default {
 
       return json(
         {
-          projectRepo: config.projectRepo,
+          projectRepo: config.projectRepos[0] ?? '',
+          projectRepos: config.projectRepos,
           projectSite: config.projectSite,
           projectsRoot: config.projectsRoot,
           previewMode: config.previewMode,
-          configured: Boolean(config.projectRepo),
+          configured: config.projectRepos.length > 0,
         },
         200,
         { 'Cache-Control': 'no-store' },
@@ -91,10 +107,10 @@ async function projectsResponse(
 ): Promise<Response> {
   const config = await resolveConfig(env, request);
 
-  if (!config.projectRepo) {
+  if (!config.projectRepos.length) {
     return json(
       {
-        error: 'Set PROJECT_REPO in the Cloudflare environment (or public/config.json).',
+        error: 'Set PROJECT_REPOS in the Cloudflare environment (or public/config.json).',
       },
       503,
       { 'Cache-Control': 'no-store' },
@@ -113,7 +129,7 @@ async function projectsResponse(
   }
 
   const cacheUrl = new URL('/api/projects', request.url);
-  cacheUrl.searchParams.set('repo', config.projectRepo);
+  cacheUrl.searchParams.set('repos', config.projectRepos.join(','));
   cacheUrl.searchParams.set('site', config.projectSite);
   cacheUrl.searchParams.set('root', config.projectsRoot);
   cacheUrl.searchParams.set('mode', config.previewMode);
@@ -125,35 +141,38 @@ async function projectsResponse(
     return noStore(cached);
   }
 
-  try {
-    const { projects, truncated } = await detectProjects(env, config);
+  const detection = await detectProjects(env, config);
 
-    if (!projects.length) {
-      throw new Error(
-        `No projects found under ${config.projectsRoot}/<category>/<folder>/index.html.`,
-      );
-    }
-
-    const response = json(
+  if (!detection.projects.length) {
+    return json(
       {
-        projectRepo: config.projectRepo,
-        projectSite: config.projectSite,
-        projectsRoot: config.projectsRoot,
-        previewMode: config.previewMode,
-        generatedAt: new Date().toISOString(),
-        count: projects.length,
-        truncated,
-        projects,
+        error: `No projects found under ${config.projectsRoot}/<category>/<folder>/index.html in ${config.projectRepos.join(', ')}.`,
+        warnings: detection.warnings,
       },
-      200,
-      { 'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}` },
+      502,
+      { 'Cache-Control': 'no-store' },
     );
-
-    writeCache(ctx, cacheKey, response.clone());
-    return noStore(response);
-  } catch (error) {
-    return json({ error: errorMessage(error) }, 502, { 'Cache-Control': 'no-store' });
   }
+
+  const response = json(
+    {
+      projectRepo: config.projectRepos[0] ?? '',
+      projectRepos: config.projectRepos,
+      projectSite: config.projectSite,
+      projectsRoot: config.projectsRoot,
+      previewMode: config.previewMode,
+      generatedAt: new Date().toISOString(),
+      count: detection.projects.length,
+      truncated: detection.truncated,
+      warnings: detection.warnings,
+      projects: detection.projects,
+    },
+    200,
+    { 'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}` },
+  );
+
+  writeCache(ctx, cacheKey, response.clone());
+  return noStore(response);
 }
 
 async function previewResponse(
@@ -167,7 +186,7 @@ async function previewResponse(
 
   const config = await resolveConfig(env, request);
 
-  if (!config.projectRepo) {
+  if (!config.projectRepos.length) {
     return text('Project repository is not configured.', 503);
   }
 
@@ -192,13 +211,19 @@ async function previewResponse(
     return text('Invalid preview path.', 400);
   }
 
-  const path = segments.map(encodeURIComponent).join('/');
+  const target = previewTarget(segments, config);
+
+  if (!target || !target.pathSegments.length) {
+    return text('Project file not found.', 404);
+  }
+
+  const path = target.pathSegments.map(encodeURIComponent).join('/');
 
   if (!path.startsWith(`${config.projectsRoot}/`)) {
     return text('Project file not found.', 404);
   }
 
-  const cacheKey = new Request(`https://project-preview.cache/${config.projectRepo}/${path}`, {
+  const cacheKey = new Request(`https://project-preview.cache/${target.repo}/${path}`, {
     method: 'GET',
   });
 
@@ -213,7 +238,7 @@ async function previewResponse(
   let upstream: Response;
 
   try {
-    upstream = await fetch(`https://raw.githubusercontent.com/${config.projectRepo}/HEAD/${path}`, {
+    upstream = await fetch(`https://raw.githubusercontent.com/${target.repo}/HEAD/${path}`, {
       method: request.method,
       headers: {
         Accept: 'text/plain',
@@ -251,10 +276,57 @@ async function previewResponse(
   return response;
 }
 
-async function detectProjects(
+function previewTarget(
+  segments: string[],
+  config: GalleryConfig,
+): { repo: string; pathSegments: string[] } | null {
+  const candidateRepo = segments.length >= 2 ? normalizeRepo(`${segments[0]}/${segments[1]}`) : '';
+
+  if (candidateRepo && config.projectRepos.includes(candidateRepo)) {
+    return {
+      repo: candidateRepo,
+      pathSegments: segments.slice(2),
+    };
+  }
+
+  // Keep old /preview/projects/... links working by treating them as the
+  // first configured repository.
+  if (segments[0] === config.projectsRoot) {
+    return {
+      repo: config.projectRepos[0],
+      pathSegments: segments,
+    };
+  }
+
+  return null;
+}
+
+async function detectProjects(env: Env, config: GalleryConfig): Promise<ProjectDetection> {
+  const detections = await Promise.all(
+    config.projectRepos.map((repo) => detectRepoProjects(env, config, repo)),
+  );
+  const projects: DetectedProject[] = [];
+  const warnings: Array<{ repo: string; error: string }> = [];
+  let truncated = false;
+
+  for (const detection of detections) {
+    projects.push(...detection.projects);
+    truncated ||= detection.truncated;
+
+    if (detection.error) {
+      warnings.push({ repo: detection.repo, error: detection.error });
+    }
+  }
+
+  projects.sort(compareProjects);
+  return { projects, truncated, warnings };
+}
+
+async function detectRepoProjects(
   env: Env,
   config: GalleryConfig,
-): Promise<{ projects: DetectedProject[]; truncated: boolean }> {
+  repo: string,
+): Promise<RepoDetection> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'User-Agent': 'project-gallery',
@@ -265,80 +337,92 @@ async function detectProjects(
     headers.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
   }
 
-  const response = await fetch(
-    `https://api.github.com/repos/${config.projectRepo}/git/trees/HEAD?recursive=1`,
-    { headers },
-  );
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`,
+      { headers },
+    );
 
-  if (!response.ok) {
-    const hint =
-      response.status === 403 || response.status === 429
-        ? ' Add a GITHUB_TOKEN secret to raise the GitHub rate limit.'
-        : '';
+    if (!response.ok) {
+      const hint =
+        response.status === 403 || response.status === 429
+          ? ' Add a GITHUB_TOKEN secret to raise the GitHub rate limit.'
+          : response.status === 404
+            ? ' Check that the repository exists and is public.'
+            : '';
 
-    throw new Error(`GitHub API returned ${response.status}.${hint}`);
-  }
-
-  const tree = (await response.json()) as GitHubTree;
-  const prefix = `${config.projectsRoot}/`;
-  const projects: DetectedProject[] = [];
-
-  for (const entry of tree.tree ?? []) {
-    if (
-      entry.type !== 'blob' ||
-      !entry.path.startsWith(prefix) ||
-      !/\/index\.html?$/.test(entry.path)
-    ) {
-      continue;
+      throw new Error(`GitHub API returned ${response.status}.${hint}`);
     }
 
-    const parts = entry.path.slice(prefix.length).split('/');
+    const tree = (await response.json()) as GitHubTree;
+    const prefix = `${config.projectsRoot}/`;
+    const projects: DetectedProject[] = [];
+    const encodedRepo = repo.split('/').map(encodeURIComponent).join('/');
 
-    if (parts.length !== 3) {
-      continue;
+    for (const entry of tree.tree ?? []) {
+      if (
+        entry.type !== 'blob' ||
+        !entry.path.startsWith(prefix) ||
+        !/\/index\.html?$/.test(entry.path)
+      ) {
+        continue;
+      }
+
+      const parts = entry.path.slice(prefix.length).split('/');
+
+      if (parts.length !== 3) {
+        continue;
+      }
+
+      const [category, folder] = parts;
+      const encodedPath = entry.path.split('/').map(encodeURIComponent).join('/');
+
+      projects.push({
+        repo,
+        folder,
+        title: titleFromFolder(folder),
+        category,
+        order: orderFromFolder(folder),
+        url:
+          config.previewMode === 'external'
+            ? `${config.projectSite}/${encodedPath}`
+            : `/preview/${encodedRepo}/${encodedPath}`,
+      });
     }
 
-    const [category, folder] = parts;
-    const encodedPath = entry.path.split('/').map(encodeURIComponent).join('/');
-
-    projects.push({
-      folder,
-      title: titleFromFolder(folder),
-      category,
-      order: orderFromFolder(folder),
-      url:
-        config.previewMode === 'external'
-          ? `${config.projectSite}/${encodedPath}`
-          : `/preview/${encodedPath}`,
-    });
+    projects.sort(compareProjects);
+    return { repo, projects, truncated: Boolean(tree.truncated) };
+  } catch (error) {
+    return {
+      repo,
+      projects: [],
+      truncated: false,
+      error: errorMessage(error),
+    };
   }
-
-  projects.sort(compareProjects);
-  return { projects, truncated: Boolean(tree.truncated) };
 }
 
 async function resolveConfig(env: Env, request: Request): Promise<GalleryConfig> {
-  const envRepo = normalizeRepo(env.PROJECT_REPO);
+  const envRepos = normalizeRepoList(env.PROJECT_REPOS);
+  const envSingle = normalizeRepo(env.PROJECT_REPO);
   const envSite = normalizeSite(env.PROJECT_SITE);
   const envRoot = normalizeRoot(env.PROJECTS_ROOT);
   const envPreviewMode = normalizePreviewMode(env.PREVIEW_MODE);
-
-  if (envRepo) {
-    return {
-      projectRepo: envRepo,
-      projectSite: envSite,
-      projectsRoot: envRoot,
-      previewMode: envPreviewMode,
-    };
-  }
-
   const defaults = await readDefaults(env, request);
+  const defaultRepos = normalizeRepoList(
+    defaults.projectRepos?.length ? defaults.projectRepos : defaults.projectRepo,
+  );
+  const projectRepos = dedupeRepos(
+    envRepos.length
+      ? [...envRepos, ...(envSingle ? [envSingle] : [])]
+      : [...defaultRepos, ...(envSingle ? [envSingle] : [])],
+  );
 
   return {
-    projectRepo: normalizeRepo(defaults.projectRepo),
+    projectRepos,
     projectSite: envSite || normalizeSite(defaults.projectSite),
     projectsRoot: envRoot || normalizeRoot(defaults.projectsRoot),
-    previewMode: envPreviewMode || normalizePreviewMode(defaults.previewMode),
+    previewMode: envPreviewMode ?? normalizePreviewMode(defaults.previewMode) ?? 'proxy',
   };
 }
 
@@ -377,7 +461,7 @@ function writeCache(ctx: ExecutionContext, key: Request, response: Response): vo
   }
 }
 
-function normalizeRepo(value: string | undefined): string {
+function normalizeRepo(value: string | null | undefined): string {
   return (value ?? '')
     .trim()
     .replace(/^https?:\/\/github\.com\//i, '')
@@ -385,16 +469,36 @@ function normalizeRepo(value: string | undefined): string {
     .replace(/^\/+|\/+$/g, '');
 }
 
-function normalizeSite(value: string | undefined): string {
+function normalizeRepoList(value: string | string[] | null | undefined): string[] {
+  const values = Array.isArray(value) ? value : (value ?? '').split(/[,\n]/);
+
+  return dedupeRepos(values.map(normalizeRepo));
+}
+
+function dedupeRepos(repos: string[]): string[] {
+  return [...new Set(repos.filter(Boolean))];
+}
+
+function normalizeSite(value: string | null | undefined): string {
   return (value ?? '').trim().replace(/\/+$/, '');
 }
 
-function normalizeRoot(value: string | undefined): string {
+function normalizeRoot(value: string | null | undefined): string {
   return (value ?? '').trim().replace(/^\/+|\/+$/g, '') || 'projects';
 }
 
-function normalizePreviewMode(value: string | undefined): PreviewMode {
-  return value?.trim().toLowerCase() === 'external' ? 'external' : 'proxy';
+function normalizePreviewMode(value: string | null | undefined): PreviewMode | null {
+  const mode = value?.trim().toLowerCase();
+
+  if (mode === 'external') {
+    return 'external';
+  }
+
+  if (mode === 'proxy') {
+    return 'proxy';
+  }
+
+  return null;
 }
 
 function contentTypeFor(path: string): string {
@@ -451,7 +555,8 @@ function compareProjects(a: DetectedProject, b: DetectedProject): number {
     categoryOrder(a.category) - categoryOrder(b.category) ||
     a.category.localeCompare(b.category) ||
     a.order - b.order ||
-    a.title.localeCompare(b.title)
+    a.title.localeCompare(b.title) ||
+    a.repo.localeCompare(b.repo)
   );
 }
 

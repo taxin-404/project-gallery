@@ -20,9 +20,14 @@ describe('SiteHeader', () => {
     expect(component).toBeTruthy();
   });
 
-  it('shows the project count and repository link', () => {
+  it('shows the project count and a single repository link', () => {
     fixture.componentRef.setInput('count', 3);
-    fixture.componentRef.setInput('repoUrl', 'https://github.com/owner/repo');
+    fixture.componentRef.setInput('repoUrls', [
+      {
+        repo: 'owner/repo',
+        url: 'https://github.com/owner/repo',
+      },
+    ]);
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
@@ -30,5 +35,26 @@ describe('SiteHeader', () => {
 
     expect(element.textContent).toContain('3 projects');
     expect(link.href).toBe('https://github.com/owner/repo');
+  });
+
+  it('lists every repository when multiple sources are configured', () => {
+    fixture.componentRef.setInput('count', 5);
+    fixture.componentRef.setInput('repoUrls', [
+      {
+        repo: 'owner/one',
+        url: 'https://github.com/owner/one',
+      },
+      {
+        repo: 'owner/two',
+        url: 'https://github.com/owner/two',
+      },
+    ]);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const links = [...element.querySelectorAll('a')].map((link) => link.getAttribute('href'));
+
+    expect(element.textContent).toContain('Sources');
+    expect(links).toEqual(['https://github.com/owner/one', 'https://github.com/owner/two']);
   });
 });

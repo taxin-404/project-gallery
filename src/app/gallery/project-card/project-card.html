@@ -35,6 +35,11 @@
     </div>
 
     <h2 class="title">{{ project().title }}</h2>
-    <p class="folder">{{ project().folder }}</p>
+    <p class="folder">
+      {{ project().folder }}
+      @if (showRepo()) {
+        <span class="repo">· {{ project().repo }}</span>
+      }
+    </p>
   </div>
 </a>

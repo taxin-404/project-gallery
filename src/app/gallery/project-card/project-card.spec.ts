@@ -15,6 +15,7 @@ describe('ProjectCard', () => {
     component = fixture.componentInstance;
 
     fixture.componentRef.setInput('project', {
+      repo: 'owner/repo',
       folder: '1_Test_Project',
       title: 'Test Project',
       category: 'HTML',
@@ -36,5 +37,12 @@ describe('ProjectCard', () => {
     expect(link.getAttribute('href')).toBe(
       'https://projects.example.com/projects/HTML/1_Test_Project/index.html',
     );
+  });
+
+  it('shows the source repository when multiple repositories are configured', () => {
+    fixture.componentRef.setInput('showRepo', true);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('owner/repo');
   });
 });

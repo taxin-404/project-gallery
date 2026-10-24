@@ -7,7 +7,7 @@ import {
   signal,
 } from '@angular/core';
 
-import { ProjectFilter, projectKey } from '../../core/project';
+import { Project, ProjectFilter, projectKey } from '../../core/project';
 import { ProjectStore } from '../../core/project-store';
 import { GallerySkeleton } from '../gallery-skeleton/gallery-skeleton';
 import { ProjectCard } from '../project-card/project-card';
@@ -52,7 +52,7 @@ export class GalleryPage implements OnInit {
         return true;
       }
 
-      return `${project.title} ${project.folder} ${project.category}`
+      return `${project.title} ${project.folder} ${project.category} ${project.repo}`
         .toLowerCase()
         .includes(query);
     });
@@ -126,7 +126,7 @@ export class GalleryPage implements OnInit {
     tabButtons?.[nextIndex]?.focus();
   }
 
-  protected trackProject(index: number, project: { category: string; folder: string }): string {
-    return projectKey(project.category, project.folder);
+  protected trackProject(_index: number, project: Project): string {
+    return projectKey(project.repo, project.category, project.folder);
   }
 }

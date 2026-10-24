@@ -10,6 +10,7 @@ import {
   ProjectFeed,
   compareProjects,
   normalizeProjectRepo,
+  normalizeProjectRepos,
   normalizeProjectSite,
   normalizeProjectsRoot,
   orderFromFolder,
@@ -17,7 +18,7 @@ import {
   titleFromFolder,
 } from './project';
 
-const CACHE_KEY = 'project-gallery-v1';
+const CACHE_KEY = 'project-gallery-v2';
 
 type ProjectSource = 'Cloudflare API' | 'live GitHub API' | 'cached copy';
 
@@ -30,13 +31,15 @@ export class ProjectStore {
   readonly source = signal<ProjectSource | null>(null);
   readonly warning = signal<string | null>(null);
   readonly error = signal<string | null>(null);
-  readonly repo = signal<string | null>(null);
+  readonly repos = signal<string[]>([]);
   readonly projectSite = signal<string | null>(null);
 
-  readonly repoUrl = computed<string | null>(() => {
-    const repo = this.repo();
-    return repo ? `https://github.com/${repo}` : null;
-  });
+  readonly repoUrls = computed<{ repo: string; url: string }[]>(() =>
+    this.repos().map((repo) => ({
+      repo,
+      url: `https://github.com/${repo}`,
+    })),
+  );
 
   readonly categories = computed<string[]>(() => [
     ...new Set(this.projects().map((project) => project.category)),
@@ -77,11 +80,13 @@ export class ProjectStore {
       const config = await this.resolveConfig();
 
       if (config) {
-        const repo = normalizeProjectRepo(config.projectRepo);
+        const repos = normalizeProjectRepos(
+          config.projectRepos?.length ? config.projectRepos : config.projectRepo,
+        );
         const site = normalizeProjectSite(config.projectSite);
 
-        if (repo) {
-          this.repo.set(repo);
+        if (repos.length) {
+          this.repos.set(repos);
         }
 
         if (site) {
@@ -89,7 +94,7 @@ export class ProjectStore {
         }
 
         const live = await this.loadFromGitHub(
-          repo,
+          repos,
           site,
           normalizeProjectsRoot(config.projectsRoot),
         );
@@ -100,7 +105,7 @@ export class ProjectStore {
         }
       } else {
         this.error.set(
-          'No project source is configured. Set PROJECT_REPO in Cloudflare, or edit public/config.json.',
+          'No project source is configured. Set PROJECT_REPOS in Cloudflare, or edit public/config.json.',
         );
       }
 
@@ -115,7 +120,8 @@ export class ProjectStore {
       }
 
       this.error.set(
-        this.error() ?? 'No projects were found. Check the project repo and the projects root.',
+        this.error() ??
+          'No projects were found. Check the configured project repos and the projects root.',
       );
     } finally {
       this.loading.set(false);
@@ -131,19 +137,27 @@ export class ProjectStore {
         return null;
       }
 
-      const repo = normalizeProjectRepo(feed.projectRepo);
+      const repos = normalizeProjectRepos(
+        feed.projectRepos?.length ? feed.projectRepos : feed.projectRepo,
+      );
       const site = normalizeProjectSite(feed.projectSite);
 
-      if (repo) {
-        this.repo.set(repo);
+      if (repos.length) {
+        this.repos.set(repos);
       }
 
       if (site) {
         this.projectSite.set(site);
       }
 
+      const warnings = (feed.warnings ?? []).map((warning) => `${warning.repo}: ${warning.error}`);
+
       if (feed.truncated) {
-        this.warning.set('The GitHub tree response was truncated; some projects may be missing.');
+        warnings.push('The GitHub tree response was truncated; some projects may be missing.');
+      }
+
+      if (warnings.length) {
+        this.warning.set(warnings.join(' '));
       }
 
       return projects;
@@ -168,61 +182,89 @@ export class ProjectStore {
   }
 
   private async loadFromGitHub(
-    repo: string,
+    repos: string[],
     site: string,
     root: string,
   ): Promise<Project[] | null> {
-    if (!repo) {
-      this.warning.set('Set PROJECT_REPO to point at the repository that contains the projects.');
+    if (!repos.length) {
+      this.warning.set('Set PROJECT_REPOS to point at the repositories that contain the projects.');
       return null;
     }
 
-    try {
-      const tree = await firstValueFrom(
-        this.http.get<GitHubTree>(
-          `https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`,
-        ),
-      );
+    const projects: Project[] = [];
+    const warnings: string[] = [];
 
-      if (tree.truncated) {
-        this.warning.set('The GitHub tree response was truncated; some projects may be missing.');
+    for (const repo of repos) {
+      try {
+        const tree = await firstValueFrom(
+          this.http.get<GitHubTree>(
+            `https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`,
+          ),
+        );
+
+        if (tree.truncated) {
+          warnings.push(
+            `${repo}: the GitHub tree response was truncated; some projects may be missing.`,
+          );
+        }
+
+        const repoProjects = this.fromTree(tree, repo, site, root);
+
+        if (!repoProjects.length) {
+          warnings.push(`${repo}: no index.html files found under ${root}/<category>/<folder>/.`);
+        }
+
+        projects.push(...repoProjects);
+      } catch (error) {
+        warnings.push(`${repo}: ${describeError(error)}`);
       }
+    }
 
-      const projects = this.fromTree(tree, site, root);
+    if (warnings.length) {
+      this.warning.set(warnings.join(' '));
+    }
 
-      if (!projects.length) {
-        throw new Error(`no index.html files found under ${root}/<category>/<folder>/`);
-      }
-
-      return projects;
-    } catch (error) {
-      this.warning.set(describeError(error));
+    if (!projects.length) {
       return null;
     }
+
+    return projects.sort(compareProjects);
   }
 
   private fromFeed(feed: ProjectFeed): Project[] {
     const site = normalizeProjectSite(feed.projectSite);
     const root = normalizeProjectsRoot(feed.projectsRoot);
+    const repos = normalizeProjectRepos(
+      feed.projectRepos?.length ? feed.projectRepos : feed.projectRepo,
+    );
+    const fallbackRepo = repos[0] ?? '';
 
     return (feed.projects ?? [])
       .filter((project) => Boolean(project.folder))
-      .map((project) => {
+      .map((project): Project | null => {
+        const repo = normalizeProjectRepo(project.repo) || fallbackRepo;
+
+        if (!repo) {
+          return null;
+        }
+
         const category = project.category ?? 'HTML';
         const folder = project.folder;
 
         return {
+          repo,
           folder,
           title: project.title ?? titleFromFolder(folder),
           category,
           order: project.order ?? orderFromFolder(folder),
-          url: project.url ?? projectUrl(category, folder, site, root),
+          url: project.url ?? projectUrl(repo, category, folder, site, root),
         };
       })
+      .filter((project): project is Project => project !== null)
       .sort(compareProjects);
   }
 
-  private fromTree(tree: GitHubTree, site: string, root: string): Project[] {
+  private fromTree(tree: GitHubTree, repo: string, site: string, root: string): Project[] {
     const prefix = `${root}/`;
 
     return (tree.tree ?? [])
@@ -242,11 +284,12 @@ export class ProjectStore {
         const [category, folder, indexFile] = parts;
 
         return {
+          repo,
           folder,
           title: titleFromFolder(folder),
           category,
           order: orderFromFolder(folder),
-          url: projectUrl(category, folder, site, root, indexFile),
+          url: projectUrl(repo, category, folder, site, root, indexFile),
         };
       })
       .filter((project): project is Project => project !== null)
@@ -297,6 +340,7 @@ function isProject(value: unknown): value is Project {
   const project = value as Partial<Project>;
 
   return (
+    typeof project.repo === 'string' &&
     typeof project.folder === 'string' &&
     typeof project.title === 'string' &&
     typeof project.category === 'string' &&

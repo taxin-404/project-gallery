@@ -1,10 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  input,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 
 import { Project } from '../../core/project';
@@ -17,6 +11,7 @@ import { Project } from '../../core/project';
 })
 export class ProjectCard {
   readonly project = input.required<Project>();
+  readonly showRepo = input(false);
 
   private readonly sanitizer = inject(DomSanitizer);
 

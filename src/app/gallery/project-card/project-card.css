@@ -114,6 +114,10 @@
   overflow-wrap: anywhere;
 }
 
+.repo {
+  opacity: 0.82;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .card,
   .arrow {
