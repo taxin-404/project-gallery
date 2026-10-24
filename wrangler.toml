@@ -2,6 +2,9 @@ name = "project-gallery"
 main = "worker/index.ts"
 compatibility_date = "2026-10-01"
 
+[vars]
+PROJECT_REPOS = "taxin-404/Responsive-Web-Design,taxin-404/JavaScript"
+
 [assets]
 directory = "./dist/project-gallery/browser"
 binding = "ASSETS"

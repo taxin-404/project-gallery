@@ -52,6 +52,8 @@ npx wrangler secret put GITHUB_TOKEN
 
 When `PROJECT_REPOS` is not set, the Worker uses the `projectRepos` list in `public/config.json` and appends `PROJECT_REPO` if it is configured. This makes it safe to add a repository to the checked-in defaults without changing the Worker settings.
 
+The checked-in `wrangler.toml` also defines `PROJECT_REPOS` so Git-connected deployments keep the same repository list.
+
 ## Project layout expected in a project repository
 
 ```
