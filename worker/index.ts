@@ -231,7 +231,7 @@ async function previewResponse(
     const cached = await readCache(cacheKey);
 
     if (cached) {
-      return cached;
+      return withBackButton(request, cached);
     }
   }
 
@@ -273,7 +273,82 @@ async function previewResponse(
     writeCache(ctx, cacheKey, response.clone());
   }
 
-  return response;
+  return withBackButton(request, response);
+}
+
+
+const BACK_BUTTON_HTML = `
+<style>
+  html { animation: pg-page-in 0.45s ease-out both; }
+  #pg-back {
+    position: fixed; top: 16px; left: 16px; z-index: 2147483647;
+    display: inline-flex; align-items: center; gap: 8px;
+    margin: 0; padding: 10px 16px 10px 12px; border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(13, 17, 23, 0.85); color: #e6edf3;
+    font: 600 14px/1 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    text-decoration: none; cursor: pointer;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    animation: pg-back-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s both;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  #pg-back:hover { transform: scale(1.05); border-color: #58a6ff; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45); }
+  #pg-back:active { transform: scale(0.97); }
+  #pg-back:focus-visible { outline: 2px solid #58a6ff; outline-offset: 3px; }
+  #pg-back svg { display: block; transition: transform 0.2s ease; }
+  #pg-back:hover svg { transform: translateX(-4px); }
+  @keyframes pg-back-in { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+  @keyframes pg-page-in { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    html, #pg-back, #pg-back svg { animation: none; transition: none; }
+  }
+</style>
+<a id="pg-back" href="/" aria-label="Back to gallery">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M19 12H5M12 19l-7-7 7-7"/>
+  </svg>
+  Back
+</a>
+<script>
+  document.getElementById('pg-back').addEventListener('click', function (event) {
+    event.preventDefault();
+    var fromGallery = document.referrer && document.referrer.indexOf(location.origin) === 0;
+    if (fromGallery && history.length > 1) {
+      history.back();
+    } else {
+      location.href = '/';
+    }
+  });
+</script>`;
+
+// Adds a floating "Back" button to project pages opened directly (not the gallery's
+// preview iframes). Runs after the cache so the cached HTML stays untouched.
+function withBackButton(request: Request, response: Response): Response {
+  const isHtml = (response.headers.get('Content-Type') ?? '').includes('text/html');
+
+  if (!isHtml || request.method !== 'GET' || !response.body) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  headers.append('Vary', 'Sec-Fetch-Dest');
+
+  // Iframes (the gallery cards) send Sec-Fetch-Dest: iframe, so they get the clean page.
+  if (request.headers.get('Sec-Fetch-Dest') !== 'document') {
+    return new Response(response.body, { status: response.status, headers });
+  }
+
+  const injected = new Response(response.body, { status: response.status, headers });
+
+  return new HTMLRewriter()
+    .onDocument({
+      end(end) {
+        end.append(BACK_BUTTON_HTML, { html: true });
+      },
+    })
+    .transform(injected);
 }
 
 function previewTarget(

@@ -56,8 +56,8 @@
         }
       </div>
     } @else {
-      @for (project of visibleProjects(); track trackProject($index, project)) {
-        <app-project-card [project]="project" [showRepo]="store.repos().length > 1" />
+      @for (project of visibleProjects(); track trackProject($index, project); let i = $index) {
+        <app-project-card [project]="project" [showRepo]="store.repos().length > 1" [index]="i" />
       }
     }
   </div>
