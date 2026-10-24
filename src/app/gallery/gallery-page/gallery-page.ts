@@ -9,6 +9,7 @@ import {
 
 import { Project, ProjectFilter, projectKey } from '../../core/project';
 import { ProjectStore } from '../../core/project-store';
+import { CategoryIcon } from '../category-icon/category-icon';
 import { GallerySkeleton } from '../gallery-skeleton/gallery-skeleton';
 import { ProjectCard } from '../project-card/project-card';
 import { SiteHeader } from '../site-header/site-header';
@@ -20,7 +21,7 @@ interface GalleryTab {
 
 @Component({
   selector: 'app-gallery-page',
-  imports: [SiteHeader, ProjectCard, GallerySkeleton],
+  imports: [SiteHeader, ProjectCard, GallerySkeleton, CategoryIcon],
   templateUrl: './gallery-page.html',
   styleUrl: './gallery-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -95,6 +96,11 @@ export class GalleryPage implements OnInit {
     if (event.target instanceof HTMLInputElement) {
       this.query.set(event.target.value);
     }
+  }
+
+  protected clearQuery(input: HTMLInputElement): void {
+    this.query.set('');
+    input.focus();
   }
 
   protected onTabKeydown(event: KeyboardEvent, index: number): void {

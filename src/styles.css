@@ -1,3 +1,9 @@
+@property --ring-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 :root {
   --bg: #0d1117;
   --panel: #161b22;
@@ -8,12 +14,21 @@
   --accent: #58a6ff;
   --html: #3fb950;
   --css: #d29922;
-  --radius: 12px;
+  --accent-2: #a371f7;
+  --radius: 14px;
   --wrap: 1200px;
 }
 
 html {
   color-scheme: dark;
+  scroll-behavior: smooth;
+  scrollbar-color: #30363d transparent;
+  scrollbar-width: thin;
+}
+
+::selection {
+  background: rgb(88 166 255 / 35%);
+  color: #fff;
 }
 
 body {
@@ -22,7 +37,12 @@ body {
   background:
     radial-gradient(
       1100px 500px at 50% -240px,
-      rgb(88 166 255 / 10%),
+      rgb(88 166 255 / 12%),
+      transparent 70%
+    ),
+    radial-gradient(
+      700px 420px at 90% 8%,
+      rgb(163 113 247 / 7%),
       transparent 70%
     ),
     var(--bg);
@@ -39,4 +59,23 @@ app-root {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: 6px;
+}
+
+/* Faint dot grid that fades out away from the top of the page. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(rgb(255 255 255 / 6%) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 25%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 25%, transparent 75%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }

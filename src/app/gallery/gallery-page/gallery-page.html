@@ -13,6 +13,7 @@
           (click)="selectFilter(tab.value)"
           (keydown)="onTabKeydown($event, index)"
         >
+          <app-category-icon [category]="tab.value" [size]="14" />
           {{ tab.label }}
           <span class="n">{{ store.counts()[tab.value] }}</span>
         </button>
@@ -26,12 +27,22 @@
         />
       </svg>
       <input
+        #search
         type="search"
         placeholder="Search projects…"
         aria-label="Search projects"
         [value]="query()"
         (input)="updateQuery($event)"
       />
+      @if (query()) {
+        <button class="clear" type="button" aria-label="Clear search" (click)="clearQuery(search)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      }
     </label>
   </div>
 
@@ -42,11 +53,26 @@
       }
     } @else if (store.error()) {
       <div class="state">
+        <svg class="state-icon fail" width="34" height="34" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+          <path d="M12 9v4" />
+          <path d="M12 17h.01" />
+        </svg>
         <strong>Unable to load projects</strong>
         {{ store.error() }}
       </div>
     } @else if (visibleProjects().length === 0) {
       <div class="state">
+        <svg class="state-icon" width="34" height="34" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+          <path d="m13.5 8.5-5 5" />
+          <path d="m8.5 8.5 5 5" />
+        </svg>
         <strong>No projects found</strong>
         @if (query()) {
           Nothing matches “{{ query() }}”.

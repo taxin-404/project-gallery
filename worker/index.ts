@@ -281,95 +281,137 @@ const BACK_BUTTON_HTML = `
 <style>
   html { animation: pg-page-in 0.45s ease-out both; }
 
-  /* Invisible hover zone on the left edge, vertically centred. */
   #pg-back {
+    --pg-water: #2f81f7;
+    --pg-ease: cubic-bezier(0.34, 1.56, 0.64, 1);
     position: fixed; left: 0; top: 50%; z-index: 2147483647;
-    width: 26px; height: 150px; margin: 0; padding: 0;
-    transform: translateY(-50%);
-    display: block; text-decoration: none; cursor: pointer;
+    width: 36px; height: 190px; transform: translateY(-50%);
+    font: 600 14px/1 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-tap-highlight-color: transparent;
   }
+  #pg-back, #pg-back * { box-sizing: border-box; }
+  #pg-back:hover, #pg-back:focus-within { width: 210px; }
 
-  /* The little glowing sliver that hints "something is here". */
-  #pg-back::before {
-    content: ""; position: absolute; left: 0; top: 50%;
-    width: 5px; height: 64px; margin-top: -32px;
-    border-radius: 0 8px 8px 0;
-    background: linear-gradient(180deg, #79c0ff, #58a6ff);
-    box-shadow: 0 0 14px rgba(88, 166, 255, 0.75);
-    animation: pg-hint 2.4s ease-in-out 1s infinite;
-    transition: opacity 0.2s ease;
+  /* Liquid layer: the goo filter fuses the edge blob and the drop into one body of water. */
+  #pg-back .pg-goo {
+    position: absolute; left: 0; top: 0; width: 210px; height: 100%;
+    pointer-events: none;
+    filter: url(#pg-goo) drop-shadow(0 6px 14px rgba(8, 40, 110, 0.55));
   }
-  #pg-back:hover::before, #pg-back:focus-visible::before { opacity: 0; animation: none; }
+  #pg-back .pg-edge, #pg-back .pg-drop { position: absolute; background: var(--pg-water); }
+  #pg-back .pg-btn { position: absolute; }
 
-  /* The pill that slides out on hover. */
-  #pg-back .pg-pill {
-    position: absolute; left: 12px; top: 50%;
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 10px 16px 10px 12px; border-radius: 999px;
-    border: 1px solid #58a6ff;
-    background: rgba(13, 17, 23, 0.92); color: #e6edf3;
-    font: 600 14px/1 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
-    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 18px rgba(88, 166, 255, 0.35);
-    opacity: 0; transform: translate(-140%, -50%);
-    transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.2, 1.15), opacity 0.2s ease;
-    animation: pg-peek 2.2s ease-in-out 0.9s 1 both;
+  /* Resting state: a small breathing meniscus hugging the edge, tinted so people notice it. */
+  #pg-back .pg-edge {
+    left: -13px; top: 50%; width: 28px; height: 66px; margin-top: -33px;
+    border-radius: 50%;
+    animation: pg-breathe 3.2s ease-in-out infinite;
+    transition: transform 0.5s var(--pg-ease);
   }
-  #pg-back:hover .pg-pill, #pg-back:focus-visible .pg-pill {
-    opacity: 1; transform: translate(0, -50%); animation: none;
+  #pg-back .pg-drop, #pg-back .pg-btn {
+    left: 8px; top: 50%; width: 52px; height: 52px; margin-top: -26px; border-radius: 26px;
+    transform: translateX(-52px) scale(0.2);
+    transition: transform 0.6s var(--pg-ease), width 0.5s cubic-bezier(0.34, 1.25, 0.64, 1) 0.18s, opacity 0.12s ease;
   }
-  #pg-back .pg-pill:active { transform: translate(0, -50%) scale(0.96); }
-  #pg-back svg { display: block; transition: transform 0.2s ease; }
-  #pg-back:hover svg { transform: translateX(-3px); }
-  #pg-back:focus-visible { outline: none; }
 
-  @keyframes pg-hint {
-    0%, 100% { width: 5px; opacity: 0.75; box-shadow: 0 0 8px rgba(88, 166, 255, 0.45); }
-    50% { width: 9px; opacity: 1; box-shadow: 0 0 20px rgba(88, 166, 255, 0.95); }
+  /* Glassy, wet-looking face of the drop (sits above the filtered layer, so it stays crisp). */
+  #pg-back .pg-btn {
+    display: flex; align-items: center; gap: 9px; padding: 0 16px; overflow: hidden;
+    color: #fff; text-decoration: none; white-space: nowrap; opacity: 0; pointer-events: none;
+    background:
+      radial-gradient(70% 55% at 30% 18%, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0) 70%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(0, 20, 80, 0.2)),
+      rgba(47, 129, 247, 0.6);
+    box-shadow:
+      inset 0 1px 1.5px rgba(255, 255, 255, 0.7),
+      inset 0 -7px 12px rgba(0, 25, 100, 0.4),
+      0 0 0 1px rgba(255, 255, 255, 0.2);
+    text-shadow: 0 1px 2px rgba(0, 20, 80, 0.5);
   }
-  /* One-time peek on load so people learn the button exists. */
-  @keyframes pg-peek {
-    0%, 100% { opacity: 0; transform: translate(-140%, -50%); }
-    25%, 70% { opacity: 1; transform: translate(0, -50%); }
+  #pg-back .pg-btn svg { flex: none; display: block; transition: transform 0.3s ease; }
+  #pg-back .pg-btn:hover svg { transform: translateX(-3px); }
+  #pg-back .pg-label { opacity: 0; transform: translateX(-6px); transition: opacity 0.25s ease 0.3s, transform 0.3s ease 0.3s; }
+  #pg-back .pg-btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+  /* Open: hover, keyboard focus, or the one-time peek on load. */
+  #pg-back:hover .pg-edge, #pg-back:focus-within .pg-edge, #pg-back.pg-open .pg-edge { transform: scale(1.35, 1.1) translateX(5px); }
+  #pg-back:hover .pg-drop, #pg-back:focus-within .pg-drop, #pg-back.pg-open .pg-drop,
+  #pg-back:hover .pg-btn, #pg-back:focus-within .pg-btn, #pg-back.pg-open .pg-btn { transform: none; width: 116px; opacity: 1; }
+  #pg-back:hover .pg-label, #pg-back:focus-within .pg-label, #pg-back.pg-open .pg-label { opacity: 1; transform: none; }
+  #pg-back:hover .pg-btn, #pg-back:focus-within .pg-btn { pointer-events: auto; cursor: pointer; }
+
+  /* Ripples spreading from the drop once it lands. */
+  #pg-back .pg-ripple {
+    position: absolute; left: 8px; top: 50%; width: 116px; height: 52px; margin-top: -26px;
+    border-radius: 26px; border: 2px solid rgba(121, 192, 255, 0.8); opacity: 0; pointer-events: none;
+  }
+  #pg-back:hover .pg-ripple, #pg-back:focus-within .pg-ripple, #pg-back.pg-open .pg-ripple {
+    animation: pg-ripple 1.5s ease-out 0.55s 2;
+  }
+
+  @keyframes pg-breathe {
+    0%, 100% { transform: scale(1, 1); }
+    50% { transform: scale(1.25, 1.12) translateX(3px); }
+  }
+  @keyframes pg-ripple {
+    0% { opacity: 0.8; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.35, 1.9); }
   }
   @keyframes pg-page-in { from { opacity: 0; } to { opacity: 1; } }
 
-  /* Touch screens have no hover: show a compact arrow tab instead. */
+  /* Touch screens: no hover, so keep a compact drop half-tucked into the edge. */
   @media (hover: none) {
-    #pg-back { width: 44px; height: 72px; }
-    #pg-back::before { display: none; }
-    #pg-back .pg-pill {
-      left: 0; opacity: 1; transform: translate(0, -50%); animation: none;
-      padding: 12px 12px 12px 8px; border-radius: 0 999px 999px 0; border-left: 0;
+    #pg-back, #pg-back:hover, #pg-back:focus-within { width: 60px; height: 90px; }
+    #pg-back .pg-edge, #pg-back .pg-ripple, #pg-back .pg-label { display: none; }
+    #pg-back .pg-drop, #pg-back .pg-btn {
+      left: -16px; width: 62px; transform: none; opacity: 1; padding: 0 12px 0 22px;
     }
-    #pg-back .pg-label { display: none; }
+    #pg-back .pg-btn { pointer-events: auto; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    html, #pg-back::before, #pg-back .pg-pill { animation: none; }
-    #pg-back .pg-pill, #pg-back svg { transition: none; }
+    html, #pg-back .pg-edge, #pg-back .pg-ripple { animation: none !important; }
+    #pg-back .pg-drop, #pg-back .pg-btn, #pg-back .pg-edge, #pg-back .pg-label, #pg-back .pg-btn svg { transition: none; }
   }
 </style>
-<a id="pg-back" href="/" aria-label="Back to gallery">
-  <span class="pg-pill">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="pg-goo" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur"/>
+      <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9"/>
+    </filter>
+  </defs>
+</svg>
+<div id="pg-back">
+  <div class="pg-goo" aria-hidden="true"><span class="pg-edge"></span><span class="pg-drop"></span></div>
+  <span class="pg-ripple" aria-hidden="true"></span>
+  <a class="pg-btn" href="/" aria-label="Back to gallery">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M19 12H5M12 19l-7-7 7-7"/>
     </svg>
     <span class="pg-label">Back</span>
-  </span>
-</a>
+  </a>
+</div>
 <script>
-  document.getElementById('pg-back').addEventListener('click', function (event) {
-    event.preventDefault();
-    var fromGallery = document.referrer && document.referrer.indexOf(location.origin) === 0;
-    if (fromGallery && history.length > 1) {
-      history.back();
-    } else {
-      location.href = '/';
-    }
-  });
+  (function () {
+    var root = document.getElementById('pg-back');
+    var link = root.querySelector('.pg-btn');
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      var fromGallery = document.referrer && document.referrer.indexOf(location.origin) === 0;
+      if (fromGallery && history.length > 1) {
+        history.back();
+      } else {
+        location.href = '/';
+      }
+    });
+    // One-time peek so people learn the drop exists.
+    setTimeout(function () {
+      root.classList.add('pg-open');
+      setTimeout(function () { root.classList.remove('pg-open'); }, 2400);
+    }, 1000);
+  })();
 </script>`;
 
 // Adds a floating "Back" button to project pages opened directly (not the gallery's
