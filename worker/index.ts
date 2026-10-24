@@ -280,36 +280,85 @@ async function previewResponse(
 const BACK_BUTTON_HTML = `
 <style>
   html { animation: pg-page-in 0.45s ease-out both; }
+
+  /* Invisible hover zone on the left edge, vertically centred. */
   #pg-back {
-    position: fixed; top: 16px; left: 16px; z-index: 2147483647;
-    display: inline-flex; align-items: center; gap: 8px;
-    margin: 0; padding: 10px 16px 10px 12px; border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(13, 17, 23, 0.85); color: #e6edf3;
-    font: 600 14px/1 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    text-decoration: none; cursor: pointer;
-    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-    animation: pg-back-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s both;
-    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    position: fixed; left: 0; top: 50%; z-index: 2147483647;
+    width: 26px; height: 150px; margin: 0; padding: 0;
+    transform: translateY(-50%);
+    display: block; text-decoration: none; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
-  #pg-back:hover { transform: scale(1.05); border-color: #58a6ff; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45); }
-  #pg-back:active { transform: scale(0.97); }
-  #pg-back:focus-visible { outline: 2px solid #58a6ff; outline-offset: 3px; }
+
+  /* The little glowing sliver that hints "something is here". */
+  #pg-back::before {
+    content: ""; position: absolute; left: 0; top: 50%;
+    width: 5px; height: 64px; margin-top: -32px;
+    border-radius: 0 8px 8px 0;
+    background: linear-gradient(180deg, #79c0ff, #58a6ff);
+    box-shadow: 0 0 14px rgba(88, 166, 255, 0.75);
+    animation: pg-hint 2.4s ease-in-out 1s infinite;
+    transition: opacity 0.2s ease;
+  }
+  #pg-back:hover::before, #pg-back:focus-visible::before { opacity: 0; animation: none; }
+
+  /* The pill that slides out on hover. */
+  #pg-back .pg-pill {
+    position: absolute; left: 12px; top: 50%;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px 10px 12px; border-radius: 999px;
+    border: 1px solid #58a6ff;
+    background: rgba(13, 17, 23, 0.92); color: #e6edf3;
+    font: 600 14px/1 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 18px rgba(88, 166, 255, 0.35);
+    opacity: 0; transform: translate(-140%, -50%);
+    transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.2, 1.15), opacity 0.2s ease;
+    animation: pg-peek 2.2s ease-in-out 0.9s 1 both;
+  }
+  #pg-back:hover .pg-pill, #pg-back:focus-visible .pg-pill {
+    opacity: 1; transform: translate(0, -50%); animation: none;
+  }
+  #pg-back .pg-pill:active { transform: translate(0, -50%) scale(0.96); }
   #pg-back svg { display: block; transition: transform 0.2s ease; }
-  #pg-back:hover svg { transform: translateX(-4px); }
-  @keyframes pg-back-in { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+  #pg-back:hover svg { transform: translateX(-3px); }
+  #pg-back:focus-visible { outline: none; }
+
+  @keyframes pg-hint {
+    0%, 100% { width: 5px; opacity: 0.75; box-shadow: 0 0 8px rgba(88, 166, 255, 0.45); }
+    50% { width: 9px; opacity: 1; box-shadow: 0 0 20px rgba(88, 166, 255, 0.95); }
+  }
+  /* One-time peek on load so people learn the button exists. */
+  @keyframes pg-peek {
+    0%, 100% { opacity: 0; transform: translate(-140%, -50%); }
+    25%, 70% { opacity: 1; transform: translate(0, -50%); }
+  }
   @keyframes pg-page-in { from { opacity: 0; } to { opacity: 1; } }
+
+  /* Touch screens have no hover: show a compact arrow tab instead. */
+  @media (hover: none) {
+    #pg-back { width: 44px; height: 72px; }
+    #pg-back::before { display: none; }
+    #pg-back .pg-pill {
+      left: 0; opacity: 1; transform: translate(0, -50%); animation: none;
+      padding: 12px 12px 12px 8px; border-radius: 0 999px 999px 0; border-left: 0;
+    }
+    #pg-back .pg-label { display: none; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    html, #pg-back, #pg-back svg { animation: none; transition: none; }
+    html, #pg-back::before, #pg-back .pg-pill { animation: none; }
+    #pg-back .pg-pill, #pg-back svg { transition: none; }
   }
 </style>
 <a id="pg-back" href="/" aria-label="Back to gallery">
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-       stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d="M19 12H5M12 19l-7-7 7-7"/>
-  </svg>
-  Back
+  <span class="pg-pill">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M19 12H5M12 19l-7-7 7-7"/>
+    </svg>
+    <span class="pg-label">Back</span>
+  </span>
 </a>
 <script>
   document.getElementById('pg-back').addEventListener('click', function (event) {
