@@ -25,6 +25,7 @@ export interface ProjectFeed {
   projectRepo?: string;
   projectSite?: string;
   projectsRoot?: string;
+  previewMode?: 'proxy' | 'external';
   generatedAt?: string;
   count?: number;
   truncated?: boolean;
@@ -35,6 +36,7 @@ export interface GalleryConfig {
   projectRepo?: string;
   projectSite?: string;
   projectsRoot?: string;
+  previewMode?: 'proxy' | 'external';
 }
 
 export interface GitHubTree {
@@ -78,8 +80,8 @@ export function normalizeProjectsRoot(value: string | null | undefined): string 
 }
 
 /**
- * Points at the deployed copy of a project in the separate project repo.
- * The gallery never hosts or rewrites the project itself.
+ * Points at a project. With no external site configured, the gallery Worker
+ * proxies the original file from the project repository.
  */
 export function projectUrl(
   category: string,
@@ -94,7 +96,7 @@ export function projectUrl(
     .join('/');
 
   const site = normalizeProjectSite(projectSite);
-  return site ? `${site}/${path}` : `/${path}`;
+  return site ? `${site}/${path}` : `/preview/${path}`;
 }
 
 export function compareProjects(a: Project, b: Project): number {

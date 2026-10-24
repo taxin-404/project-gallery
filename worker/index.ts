@@ -5,6 +5,7 @@ interface Env {
   PROJECT_REPO?: string;
   PROJECT_SITE?: string;
   PROJECTS_ROOT?: string;
+  PREVIEW_MODE?: string;
   GITHUB_TOKEN?: string;
 }
 
@@ -12,10 +13,13 @@ interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
 }
 
+type PreviewMode = 'proxy' | 'external';
+
 interface GalleryConfig {
   projectRepo: string;
   projectSite: string;
   projectsRoot: string;
+  previewMode: PreviewMode;
 }
 
 interface GitHubTree {
@@ -37,11 +41,7 @@ interface DetectedProject {
 const CACHE_TTL_SECONDS = 300;
 
 export default {
-  async fetch(
-    request: Request,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/config') {
@@ -56,7 +56,8 @@ export default {
           projectRepo: config.projectRepo,
           projectSite: config.projectSite,
           projectsRoot: config.projectsRoot,
-          configured: Boolean(config.projectRepo && config.projectSite),
+          previewMode: config.previewMode,
+          configured: Boolean(config.projectRepo),
         },
         200,
         { 'Cache-Control': 'no-store' },
@@ -69,6 +70,10 @@ export default {
       }
 
       return projectsResponse(request, env, ctx);
+    }
+
+    if (url.pathname.startsWith('/preview/')) {
+      return previewResponse(request, env, ctx);
     }
 
     if (url.pathname.startsWith('/api/')) {
@@ -86,11 +91,21 @@ async function projectsResponse(
 ): Promise<Response> {
   const config = await resolveConfig(env, request);
 
-  if (!config.projectRepo || !config.projectSite) {
+  if (!config.projectRepo) {
+    return json(
+      {
+        error: 'Set PROJECT_REPO in the Cloudflare environment (or public/config.json).',
+      },
+      503,
+      { 'Cache-Control': 'no-store' },
+    );
+  }
+
+  if (config.previewMode === 'external' && !config.projectSite) {
     return json(
       {
         error:
-          'Set PROJECT_REPO and PROJECT_SITE in the Cloudflare environment (or public/config.json).',
+          'PREVIEW_MODE is external, but PROJECT_SITE is not set. Set PROJECT_SITE or use PREVIEW_MODE=proxy.',
       },
       503,
       { 'Cache-Control': 'no-store' },
@@ -101,6 +116,7 @@ async function projectsResponse(
   cacheUrl.searchParams.set('repo', config.projectRepo);
   cacheUrl.searchParams.set('site', config.projectSite);
   cacheUrl.searchParams.set('root', config.projectsRoot);
+  cacheUrl.searchParams.set('mode', config.previewMode);
   const cacheKey = new Request(cacheUrl.toString(), { method: 'GET' });
 
   const cached = await readCache(cacheKey);
@@ -123,6 +139,7 @@ async function projectsResponse(
         projectRepo: config.projectRepo,
         projectSite: config.projectSite,
         projectsRoot: config.projectsRoot,
+        previewMode: config.previewMode,
         generatedAt: new Date().toISOString(),
         count: projects.length,
         truncated,
@@ -135,12 +152,103 @@ async function projectsResponse(
     writeCache(ctx, cacheKey, response.clone());
     return noStore(response);
   } catch (error) {
-    return json(
-      { error: errorMessage(error) },
-      502,
-      { 'Cache-Control': 'no-store' },
-    );
+    return json({ error: errorMessage(error) }, 502, { 'Cache-Control': 'no-store' });
   }
+}
+
+async function previewResponse(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return methodNotAllowed();
+  }
+
+  const config = await resolveConfig(env, request);
+
+  if (!config.projectRepo) {
+    return text('Project repository is not configured.', 503);
+  }
+
+  const url = new URL(request.url);
+  const rawPath = url.pathname.slice('/preview/'.length);
+  let decodedPath: string;
+
+  try {
+    decodedPath = decodeURIComponent(rawPath);
+  } catch {
+    return text('Invalid preview path.', 400);
+  }
+
+  const segments = decodedPath.split('/');
+
+  if (
+    !segments.length ||
+    segments.some(
+      (segment) => !segment || segment === '.' || segment === '..' || segment.includes('\\'),
+    )
+  ) {
+    return text('Invalid preview path.', 400);
+  }
+
+  const path = segments.map(encodeURIComponent).join('/');
+
+  if (!path.startsWith(`${config.projectsRoot}/`)) {
+    return text('Project file not found.', 404);
+  }
+
+  const cacheKey = new Request(`https://project-preview.cache/${config.projectRepo}/${path}`, {
+    method: 'GET',
+  });
+
+  if (request.method === 'GET') {
+    const cached = await readCache(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+  }
+
+  let upstream: Response;
+
+  try {
+    upstream = await fetch(`https://raw.githubusercontent.com/${config.projectRepo}/HEAD/${path}`, {
+      method: request.method,
+      headers: {
+        Accept: 'text/plain',
+        'User-Agent': 'project-gallery',
+      },
+    });
+  } catch {
+    return text('Unable to fetch the project file.', 502);
+  }
+
+  if (!upstream.ok) {
+    if (upstream.status === 404) {
+      return text('Project file not found.', 404);
+    }
+
+    return text(`GitHub returned ${upstream.status}.`, 502);
+  }
+
+  const contentType = contentTypeFor(path);
+  const headers = new Headers({
+    'Cache-Control': 'public, max-age=300',
+    'Content-Type': contentType,
+    'X-Content-Type-Options': 'nosniff',
+  });
+
+  const response = new Response(request.method === 'HEAD' ? null : upstream.body, {
+    status: 200,
+    headers,
+  });
+
+  if (request.method === 'GET') {
+    writeCache(ctx, cacheKey, response.clone());
+  }
+
+  return response;
 }
 
 async function detectProjects(
@@ -191,16 +299,17 @@ async function detectProjects(
     }
 
     const [category, folder] = parts;
+    const encodedPath = entry.path.split('/').map(encodeURIComponent).join('/');
 
     projects.push({
       folder,
       title: titleFromFolder(folder),
       category,
       order: orderFromFolder(folder),
-      url: `${config.projectSite}/${entry.path
-        .split('/')
-        .map(encodeURIComponent)
-        .join('/')}`,
+      url:
+        config.previewMode === 'external'
+          ? `${config.projectSite}/${encodedPath}`
+          : `/preview/${encodedPath}`,
     });
   }
 
@@ -208,35 +317,32 @@ async function detectProjects(
   return { projects, truncated: Boolean(tree.truncated) };
 }
 
-async function resolveConfig(
-  env: Env,
-  request: Request,
-): Promise<GalleryConfig> {
+async function resolveConfig(env: Env, request: Request): Promise<GalleryConfig> {
   const envRepo = normalizeRepo(env.PROJECT_REPO);
   const envSite = normalizeSite(env.PROJECT_SITE);
   const envRoot = normalizeRoot(env.PROJECTS_ROOT);
+  const envPreviewMode = normalizePreviewMode(env.PREVIEW_MODE);
 
-  if (envRepo && envSite) {
+  if (envRepo) {
     return {
       projectRepo: envRepo,
       projectSite: envSite,
       projectsRoot: envRoot,
+      previewMode: envPreviewMode,
     };
   }
 
   const defaults = await readDefaults(env, request);
 
   return {
-    projectRepo: envRepo || normalizeRepo(defaults.projectRepo),
+    projectRepo: normalizeRepo(defaults.projectRepo),
     projectSite: envSite || normalizeSite(defaults.projectSite),
     projectsRoot: envRoot || normalizeRoot(defaults.projectsRoot),
+    previewMode: envPreviewMode || normalizePreviewMode(defaults.previewMode),
   };
 }
 
-async function readDefaults(
-  env: Env,
-  request: Request,
-): Promise<Partial<GalleryConfig>> {
+async function readDefaults(env: Env, request: Request): Promise<Partial<GalleryConfig>> {
   try {
     const configUrl = new URL('/config.json', request.url);
     const response = await env.ASSETS.fetch(
@@ -263,11 +369,7 @@ async function readCache(key: Request): Promise<Response | null> {
   }
 }
 
-function writeCache(
-  ctx: ExecutionContext,
-  key: Request,
-  response: Response,
-): void {
+function writeCache(ctx: ExecutionContext, key: Request, response: Response): void {
   try {
     ctx.waitUntil(caches.default.put(key, response));
   } catch {
@@ -290,6 +392,47 @@ function normalizeSite(value: string | undefined): string {
 function normalizeRoot(value: string | undefined): string {
   return (value ?? '').trim().replace(/^\/+|\/+$/g, '') || 'projects';
 }
+
+function normalizePreviewMode(value: string | undefined): PreviewMode {
+  return value?.trim().toLowerCase() === 'external' ? 'external' : 'proxy';
+}
+
+function contentTypeFor(path: string): string {
+  const dot = path.lastIndexOf('.');
+
+  if (dot === -1) {
+    return 'application/octet-stream';
+  }
+
+  return CONTENT_TYPES[path.slice(dot).toLowerCase()] ?? 'application/octet-stream';
+}
+
+const CONTENT_TYPES: Record<string, string> = {
+  '.avif': 'image/avif',
+  '.css': 'text/css; charset=utf-8',
+  '.gif': 'image/gif',
+  '.htm': 'text/html; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.mp3': 'audio/mpeg',
+  '.mp4': 'video/mp4',
+  '.otf': 'font/otf',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ttf': 'font/ttf',
+  '.txt': 'text/plain; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.webm': 'video/webm',
+  '.webp': 'image/webp',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.xml': 'application/xml; charset=utf-8',
+};
 
 function titleFromFolder(folder: string): string {
   return folder
@@ -324,16 +467,23 @@ function categoryOrder(category: string): number {
   return 2;
 }
 
-function json(
-  data: unknown,
-  status = 200,
-  headers: Record<string, string> = {},
-): Response {
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       ...headers,
+    },
+  });
+}
+
+function text(message: string, status: number): Response {
+  return new Response(message, {
+    status,
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'text/plain; charset=utf-8',
+      'X-Content-Type-Options': 'nosniff',
     },
   });
 }
@@ -350,11 +500,7 @@ function noStore(response: Response): Response {
 }
 
 function methodNotAllowed(): Response {
-  return json(
-    { error: 'Method not allowed' },
-    405,
-    { Allow: 'GET', 'Cache-Control': 'no-store' },
-  );
+  return json({ error: 'Method not allowed' }, 405, { Allow: 'GET', 'Cache-Control': 'no-store' });
 }
 
 function errorMessage(error: unknown): string {

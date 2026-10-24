@@ -100,7 +100,7 @@ export class ProjectStore {
         }
       } else {
         this.error.set(
-          'No project source is configured. Set PROJECT_REPO and PROJECT_SITE in Cloudflare, or edit public/config.json.',
+          'No project source is configured. Set PROJECT_REPO in Cloudflare, or edit public/config.json.',
         );
       }
 
@@ -110,15 +110,12 @@ export class ProjectStore {
         this.projects.set(cached);
         this.source.set('cached copy');
         this.error.set(null);
-        this.warning.set(
-          this.warning() ?? 'Using the last cached project list.',
-        );
+        this.warning.set(this.warning() ?? 'Using the last cached project list.');
         return;
       }
 
       this.error.set(
-        this.error() ??
-          'No projects were found. Check the project repo, its deployment URL, and the projects root.',
+        this.error() ?? 'No projects were found. Check the project repo and the projects root.',
       );
     } finally {
       this.loading.set(false);
@@ -127,9 +124,7 @@ export class ProjectStore {
 
   private async loadFromWorker(): Promise<Project[] | null> {
     try {
-      const feed = await firstValueFrom(
-        this.http.get<ProjectFeed>('/api/projects'),
-      );
+      const feed = await firstValueFrom(this.http.get<ProjectFeed>('/api/projects'));
       const projects = this.fromFeed(feed);
 
       if (!projects.length) {
@@ -148,9 +143,7 @@ export class ProjectStore {
       }
 
       if (feed.truncated) {
-        this.warning.set(
-          'The GitHub tree response was truncated; some projects may be missing.',
-        );
+        this.warning.set('The GitHub tree response was truncated; some projects may be missing.');
       }
 
       return projects;
@@ -168,9 +161,7 @@ export class ProjectStore {
     }
 
     try {
-      return await firstValueFrom(
-        this.http.get<GalleryConfig>('/config.json'),
-      );
+      return await firstValueFrom(this.http.get<GalleryConfig>('/config.json'));
     } catch {
       return null;
     }
@@ -181,10 +172,8 @@ export class ProjectStore {
     site: string,
     root: string,
   ): Promise<Project[] | null> {
-    if (!repo || !site) {
-      this.warning.set(
-        'Set PROJECT_REPO and PROJECT_SITE to point at the project repo and its deployed site.',
-      );
+    if (!repo) {
+      this.warning.set('Set PROJECT_REPO to point at the repository that contains the projects.');
       return null;
     }
 
@@ -196,17 +185,13 @@ export class ProjectStore {
       );
 
       if (tree.truncated) {
-        this.warning.set(
-          'The GitHub tree response was truncated; some projects may be missing.',
-        );
+        this.warning.set('The GitHub tree response was truncated; some projects may be missing.');
       }
 
       const projects = this.fromTree(tree, site, root);
 
       if (!projects.length) {
-        throw new Error(
-          `no index.html files found under ${root}/<category>/<folder>/`,
-        );
+        throw new Error(`no index.html files found under ${root}/<category>/<folder>/`);
       }
 
       return projects;
