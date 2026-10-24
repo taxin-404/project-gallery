@@ -296,14 +296,14 @@ const BACK_BUTTON_HTML = `
   #pg-back .pg-goo {
     position: absolute; left: 0; top: 0; width: 210px; height: 100%;
     pointer-events: none;
-    filter: url(#pg-goo) drop-shadow(0 6px 14px rgba(8, 40, 110, 0.55));
+    filter: url(#pg-goo) drop-shadow(0 3px 8px rgba(8, 40, 110, 0.45));
   }
   #pg-back .pg-edge, #pg-back .pg-drop { position: absolute; background: var(--pg-water); }
   #pg-back .pg-btn { position: absolute; }
 
   /* Resting state: a small breathing meniscus hugging the edge, tinted so people notice it. */
   #pg-back .pg-edge {
-    left: -13px; top: 50%; width: 28px; height: 66px; margin-top: -33px;
+    left: -13px; top: 50%; width: 28px; height: 50px; margin-top: -25px;
     border-radius: 50%;
     animation: pg-breathe 3.2s ease-in-out infinite;
     transition: transform 0.5s var(--pg-ease);
@@ -349,9 +349,10 @@ const BACK_BUTTON_HTML = `
     animation: pg-ripple 1.5s ease-out 0.55s 2;
   }
 
+  /* Mostly tucked off-screen: only a thin sliver (about 6-9px) shows at rest. */
   @keyframes pg-breathe {
-    0%, 100% { transform: scale(1, 1); }
-    50% { transform: scale(1.25, 1.12) translateX(3px); }
+    0%, 100% { transform: translateX(-9px) scale(1, 1); }
+    50% { transform: translateX(-6px) scale(1, 1.1); }
   }
   @keyframes pg-ripple {
     0% { opacity: 0.8; transform: scale(1); }
